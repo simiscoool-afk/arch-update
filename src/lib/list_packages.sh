@@ -15,6 +15,7 @@ packages_exit_code=$?
 if [ "${packages_exit_code}" -eq 124 ]; then
 	warning_msg "$(eval_gettext "Unable to retrieve Packages updates (request timeout)\n")"
 	unset packages
+	update_check_failed="true"
 elif [ -n "${no_version}" ]; then
 	packages=$(echo "${packages}" | awk '{print $1}')
 fi
@@ -31,6 +32,7 @@ if [ -n "${aur_helper}" ]; then
 	if [ "${unformatted_aur_packages_exit_code}" -eq 124 ]; then
 		warning_msg "$(eval_gettext "Unable to retrieve AUR Packages updates (request timeout)\n")"
 		unset aur_packages
+		update_check_failed="true"
 	elif [ -n "${no_version}" ]; then
 		aur_packages=$(echo "${aur_packages}" | awk '{print $1}')
 	fi
@@ -43,6 +45,7 @@ if [ -n "${flatpak_support}" ]; then
 
 	if [ "${flatpak_metadata_update_exit_code}" -eq 124 ]; then
 		warning_msg "$(eval_gettext "Unable to retrieve Flatpak packages updates (request timeout)\n")"
+		update_check_failed="true"
 	else
 		mapfile -t flatpak_mask < <(flatpak mask | tr -d ' ')
 
@@ -146,8 +149,10 @@ fi
 date "+%s%n%F %T" > "${statedir}/last_updates_check_time"
 
 if [ -z "${packages}" ] && [ -z "${aur_packages}" ] && [ "${#flatpak_packages[@]}" -eq 0 ]; then
-	icon_up-to-date
-	info_msg "$(eval_gettext "No update available\n")"
+	if [ -z "${update_check_failed}" ]; then
+		icon_up-to-date
+		info_msg "$(eval_gettext "No update available\n")"
+	fi
 
 	if [ -n "${list_option}" ]; then
 		exit 7
