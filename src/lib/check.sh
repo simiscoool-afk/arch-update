@@ -17,65 +17,90 @@ touch "${statedir}"/last_updates_check_{packages,aur,flatpak}
 # shellcheck disable=SC2154
 checkupdates_db_tmpdir=$(mktemp -d "${checkupdates_db_tmpdir_prefix}XXXXX")
 
+update_check_failed=""
+
 # shellcheck disable=SC2154
-if [ -z "${no_version}" ]; then
+packages=$(CHECKUPDATES_DB="${checkupdates_db_tmpdir}" timeout "${update_check_timeout}" checkupdates)
+packages_exit_code=$?
+
+if [ "${packages_exit_code}" -eq 124 ]; then
+	# Keep the previous state file content to avoid falsely reporting being up to date
+	warning_msg "$(eval_gettext "Unable to retrieve Packages updates (request timeout)\n")"
+	update_check_failed="true"
+elif [ -n "${no_version}" ]; then
 	# shellcheck disable=SC2154
-	CHECKUPDATES_DB="${checkupdates_db_tmpdir}" checkupdates > "${statedir}/last_updates_check_packages"
+	echo "${packages}" | awk '{print $1}' > "${statedir}/last_updates_check_packages"
 else
 	# shellcheck disable=SC2154
-	CHECKUPDATES_DB="${checkupdates_db_tmpdir}" checkupdates | awk '{print $1}' > "${statedir}/last_updates_check_packages"
+	echo "${packages}" > "${statedir}/last_updates_check_packages"
 fi
 
 if [ -n "${aur_helper}" ]; then
-	if [ -z "${no_version}" ]; then
-		# shellcheck disable=SC2154
-		LC_ALL=C "${aur_helper}" -Qua 2> /dev/null | sed 's/^ *//' | sed 's/ \+/ /g' | grep -vw "\[ignored\]$" > "${statedir}/last_updates_check_aur"
+	# "< /dev/null" and "2 > /dev/null" needed for pikaur (which is not completely script friendly and outputs some descriptive string in stderr when looking for updates with -Qua)
+	# The former because it assumes an interactive TTY environment (causing `timeout` to behave unexpectedly)
+	# shellcheck disable=SC2154
+	unformatted_aur_packages=$(LC_ALL=C timeout "${update_check_timeout}" "${aur_helper}" -Qua < /dev/null 2> /dev/null)
+	unformatted_aur_packages_exit_code=$?
+
+	if [ "${unformatted_aur_packages_exit_code}" -eq 124 ]; then
+		# Keep the previous state file content to avoid falsely reporting being up to date
+		warning_msg "$(eval_gettext "Unable to retrieve AUR Packages updates (request timeout)\n")"
+		update_check_failed="true"
+	elif [ -n "${no_version}" ]; then
+		echo "${unformatted_aur_packages}" | sed 's/^ *//' | sed 's/ \+/ /g' | grep -vw "\[ignored\]$" | awk '{print $1}' > "${statedir}/last_updates_check_aur"
 	else
-		# shellcheck disable=SC2154
-		LC_ALL=C "${aur_helper}" -Qua 2> /dev/null | sed 's/^ *//' | sed 's/ \+/ /g' | grep -vw "\[ignored\]$" | awk '{print $1}' > "${statedir}/last_updates_check_aur"
+		echo "${unformatted_aur_packages}" | sed 's/^ *//' | sed 's/ \+/ /g' | grep -vw "\[ignored\]$" > "${statedir}/last_updates_check_aur"
 	fi
 fi
 
 if [ -n "${flatpak_support}" ]; then
-	flatpak update --appstream > /dev/null
+	# shellcheck disable=SC2154
+	timeout --foreground "${update_check_timeout}" flatpak update --appstream > /dev/null
+	flatpak_metadata_update_exit_code=$?
 
-	mapfile -t flatpak_mask < <(flatpak mask | tr -d ' ')
-
-	if [ "${#flatpak_mask[@]}" -gt 0 ]; then
-		mapfile -t flatpak_packages < <(flatpak remote-ls --updates --columns=application,version | tr -s '\t' ' ')
-
-		declare -A app_names
-		while read -r flatpak_id flatpak_name; do
-			app_names["${flatpak_id}"]="${flatpak_name}"
-		done < <(flatpak list --columns=application,name)
-
-	        mapfile -t flatpak_packages < <(
-			for packages in "${flatpak_packages[@]}"; do
-				read -r app_id app_version <<< "${packages}"
-
-				for pattern in "${flatpak_mask[@]}"; do
-					# shellcheck disable=SC2053
-					[[ "${app_id}" == ${pattern} ]] && continue 2
-				done
-
-				app_name="${app_names[${app_id}]:-${app_id}}"
-
-				if [ -z "${no_version}" ]; then
-					echo "${app_name} ${app_version}"
-				else
-					echo "${app_name}"
-				fi
-			done
-		)
+	if [ "${flatpak_metadata_update_exit_code}" -eq 124 ]; then
+		# Keep the previous state file content to avoid falsely reporting being up to date
+		warning_msg "$(eval_gettext "Unable to retrieve Flatpak packages updates (request timeout)\n")"
+		update_check_failed="true"
 	else
-		if [ -z "${no_version}" ]; then
-			mapfile -t flatpak_packages < <(flatpak remote-ls --updates --columns=name,version | tr -s '\t' ' ')
-		else
-			mapfile -t flatpak_packages < <(flatpak remote-ls --updates --columns=name)
-		fi
-	fi
+		mapfile -t flatpak_mask < <(flatpak mask | tr -d ' ')
 
-	printf "%s\n" "${flatpak_packages[@]}" > "${statedir}/last_updates_check_flatpak"
+		if [ "${#flatpak_mask[@]}" -gt 0 ]; then
+			mapfile -t flatpak_packages < <(flatpak remote-ls --updates --columns=application,version | tr -s '\t' ' ')
+
+			declare -A app_names
+			while read -r flatpak_id flatpak_name; do
+				app_names["${flatpak_id}"]="${flatpak_name}"
+			done < <(flatpak list --columns=application,name)
+
+		        mapfile -t flatpak_packages < <(
+				for packages in "${flatpak_packages[@]}"; do
+					read -r app_id app_version <<< "${packages}"
+
+					for pattern in "${flatpak_mask[@]}"; do
+						# shellcheck disable=SC2053
+						[[ "${app_id}" == ${pattern} ]] && continue 2
+					done
+
+					app_name="${app_names[${app_id}]:-${app_id}}"
+
+					if [ -z "${no_version}" ]; then
+						echo "${app_name} ${app_version}"
+					else
+						echo "${app_name}"
+					fi
+				done
+			)
+		else
+			if [ -z "${no_version}" ]; then
+				mapfile -t flatpak_packages < <(flatpak remote-ls --updates --columns=name,version | tr -s '\t' ' ')
+			else
+				mapfile -t flatpak_packages < <(flatpak remote-ls --updates --columns=name)
+			fi
+		fi
+
+		printf "%s\n" "${flatpak_packages[@]}" > "${statedir}/last_updates_check_flatpak"
+	fi
 fi
 
 sed -i '/^\s*$/d' "${statedir}"/last_updates_check_{packages,aur,flatpak}
@@ -123,7 +148,7 @@ fi
 
 if [ -n "${update_available}" ]; then
 	icon_updates-available
-else
+elif [ -z "${update_check_failed}" ]; then
 	icon_up-to-date
 fi
 
