@@ -86,7 +86,7 @@ fi
 # Set the default / fallback value for options that require it (if the arch-update.conf configuration file doesn't exists, if the concerned option is commented or if the set value is invalid) 
 [ -z "${news_num}" ] && news_num="5"
 [ -z "${news_timeout}" ] && news_timeout="10"
-[ -z "${update_check_timeout}" ] && update_check_timeout="30"
+[ -z "${update_check_timeout}" ] && update_check_timeout="300"
 [ -z "${old_packages_num}" ] && old_packages_num="3"
 [ -z "${uninstalled_packages_num}" ] && uninstalled_packages_num="0"
 [ -z "${tray_updates_per_page}" ] && tray_updates_per_page="0"

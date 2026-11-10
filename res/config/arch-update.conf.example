@@ -10,7 +10,7 @@
 #NoALHPCheck
 #NewsNum=5
 #NewsTimeout=10
-#UpdateCheckTimeout=30
+#UpdateCheckTimeout=300
 #AURHelper=paru
 #PrivilegeElevationCommand=sudo
 #KeepOldPackages=3

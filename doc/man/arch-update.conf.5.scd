@@ -47,7 +47,7 @@ Options are case sensitive, so capital letters have to be respected.
 	Timeout threshold for the Arch news check requests. The value is expressed in seconds and has to be an integer. Setting this option to "0" results in no timeout (no time limit for requests to complete). Defaults to 10.
 
 *UpdateCheckTimeout=[Num]*
-	Timeout threshold for the packages updates check requests (including AUR and Flatpak packages). The value is expressed in seconds and has to be an integer. Setting this option to "0" results in no timeout (no time limit for requests to complete). Defaults to 30.
+	Timeout threshold for the packages updates check requests (including AUR and Flatpak packages). The value is expressed in seconds and has to be an integer. Setting this option to "0" results in no timeout (no time limit for requests to complete). Defaults to 300.
 
 *AURHelper=[AUR Helper]*
 	AUR helper to be used for AUR packages support. Valid values are `paru`, `yay` or `pikaur`. If this option is not set, Arch-Update will use the first AUR helper available in the following order: `paru` then `yay` then `pikaur` (in case none of them is installed, Arch-Update will not take AUR packages into account).
